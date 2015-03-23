@@ -1,0 +1,98 @@
+#!/usr/bin/python
+import numpy as np
+from math import exp
+import scipy.weave as weave
+import scipy.sparse as sp
+from itertools import product
+import pdb
+
+
+
+class seq_to_feature:
+    def __init__(self,  n):
+        self.n = n
+        self.nMers = []
+        self.nMer_dict = {}
+        
+    def get_nMers(self,  seqs):
+        tmp_nMers = []
+        for seq in seqs:
+            for i in range(0,  len(seq)-self.n+1):
+                tmp_nMers.append( seq[i:(i+self.n)].upper() )
+        self.nMers = list( set(tmp_nMers) )
+        self.nMer_dict = {self.nMers[i]:i for i in range(len(self.nMers))}
+        return self.nMers
+    
+    def construct_nMers(self,  AAs):
+        tmp_nMers = itertools.product( AAs,  repeat = self.n )
+        self.nMers = [''.join(nMer) for nMer in tmp_nMers]
+        self.nMer_dict = {self.nMers[i]:i for i in range(len(self.nMers))}
+        return self.nMers
+    
+    def BoW(self,  seqs,  normed = 1):
+        #normed = 0: do not normalize, =1: normalize by sum, =2: normalize by maximum
+        M = len(seqs)
+        N = len(self.nMers)
+        x = sp.lil_matrix((M,  N),  dtype = 'float64')
+        
+        for i in range(M):
+            for j in range(len(seqs[i])-self.n+1):
+                nMer = seqs[i][j:(j+self.n)].upper()
+                x[i, self.nMer_dict[nMer]] += 1
+            if normed == 1:
+                x[i, : ] = x[i,:]*1.0/x[i,:].sum()
+            elif normed == 2:
+                x[i, : ] = x[i,:]*1.0/x[i,:].max()
+        return x
+    
+    def alignment(self,  seqs,  AA_dict,   paras,  para_ind = [],  show_alignment = 0,  normed = 2):
+        M = len(seqs)
+        N = len(self.nMers)
+        X = np.zeros(( M,  N ))
+
+        if show_alignment == 2:
+            p = []
+            for i in range(M):
+                pi = []
+                for j in range(N):
+                    X[i,  j],  pj = kernel.local_align(seqs[i],  self.nMers[j],   AA_dict,  paras,  para_ind,  show_alignment)
+                    pi.append(pj)
+                p.append(pi[:])
+            if normed == 1:
+                denominator = np.sum(X,  -1)[:, np.newaxis]
+                denominator[ denominator ==0 ] = 0.1
+            elif normed == 2:
+                denominator = np.max(X,  -1)[:, np.newaxis]
+                denominator[ denominator ==0 ] = 0.1
+            else:
+                denominator = 1.0
+            return X*1.0/denominator,  np.array(p)
+
+        else:
+            for i in range(M):
+                for j in range(N):
+                    X[i,  j] = kernel.local_align(seqs[i],  self.nMers[j],  AA_dict,  paras,  para_ind,  show_alignment)
+            
+            if normed == 1:
+                denominator = np.sum(X,  -1)[:, np.newaxis]
+                denominator[ denominator ==0 ] = 0.1
+            elif normed == 2:
+                denominator = np.max(X,  -1)[:, np.newaxis]
+                denominator[ denominator ==0 ] = 0.1
+            else:
+                denominator = 1.0
+            return X*1.0/denominator
+
+def f_select(x,  n_f, f_type):
+    tot_s,  tot_f = np.shape(x)
+    if f_type==1:
+        f_score = np.reshape( np.array( x.sum(axis=0) ), tot_f )
+
+    elif f_type==2:
+        f_score = np.zeros(tot_f)
+        for i in range(tot_s):
+            f_sort = np.argsort( np.reshape( x[i, :].toarray() , tot_f))[::-1]
+            f_score[ f_sort[:n_f] ] += 1
+
+    f_sort = np.argsort(f_score)[::-1]
+    return f_sort[:n_f]

@@ -1,0 +1,66 @@
+#!/usr/bin/python
+import sys
+sys.append('../src')
+import time,  pdb, random
+import numpy as np
+from Bio.SubsMat import MatrixInfo
+import pickle
+import data_reader,  feature
+from sklearn import grid_search, neighbors
+import matplotlib.pyplot as plt
+import scipy.io
+import scipy.sparse as sp
+import pickle
+
+#-----------------load data----------------------
+with open('../data/data',  'r') as f:
+    data = pickle.load(f)
+areas = np.array( data.get_values_for_key( 'Precursor.Area' ) )
+notNA = areas!='NA'
+areas = np.array(map(float, areas[ notNA ]))
+charges = np.array( data.get_values_for_key( 'Charge') )[notNA]
+seqs = np.array (data.get_values_for_key('Sequence'))[notNA]
+
+
+#----------------generate features-------------------
+n = 4 #length of words in n-gram
+n_f = 1000#number of feature to be selected
+f_type = 1 #feature selection type
+
+data_ind = charges==2
+
+y = np.log2( areas[data_ind] )
+y = (y-min(y))*1.0/(max(y)-min(y))
+
+#seqs = seqs[data_ind]
+#Map = feature.seq_to_feature(n)
+#Map.get_nMers(seqs)
+#x = Map.BoW(seqs, normed = 1)
+#scipy.io.mmwrite('n'+str(n)+'charge2', x)
+x = sp.lil_matrix(scipy.io.mmread('n'+str(n)+'charge2'))
+f_ind = feature.f_select( x , n_f, f_type)
+x = sp.csc_matrix(x)
+x = x[:,  f_ind]
+
+
+#------------------settings of grid search----------------------------------
+kernel = 'linear' #'linear', 'rbf', 'poly' and 'sigmoid'
+c_range = [1e-3,  0.1,  10]
+g_range = [1e-1,  1,  10]
+e_range = [0.1,  0.3,  0.5]
+if (kernel == 'linear') or (kernel=='poly'):
+    parameters = {'C':c_range,  'epsilon':e_range}
+else:
+    parameters = {'C':c_range,  'epsilon':e_range,  'gamma':g_range}
+nj = 3 #number of jobs in parallel
+nfold= 5
+outfile = 'exp3'
+
+#-------------run the simulation ----------
+learner = svm.SVR()
+clf = grid_search.GridSearchCV(learner, parameters,  n_jobs = nj,  cv=nfold)
+clf.fit(x.toarray(), y)
+print clf.best_score_
+print clf.best_estimator_
+with open(outfile,  'w') as f:
+    pickle.dump(clf,  f)
