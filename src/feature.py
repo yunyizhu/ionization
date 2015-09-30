@@ -6,8 +6,6 @@ import scipy.sparse as sp
 from itertools import product
 import pdb
 
-
-
 class seq_to_feature:
     def __init__(self,  n):
         self.n = n
